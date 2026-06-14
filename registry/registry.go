@@ -9,23 +9,25 @@ package registry
 
 import (
 	rca "github.com/rocker-zhang/gpufleet-rca"
+	"github.com/rocker-zhang/gpufleet-rca/playbooks/nccltimeout"
 	"github.com/rocker-zhang/gpufleet-rca/playbooks/xid79"
 )
 
 // Default returns the ordered set of registered public signatures.
 //
 // Slot 1: XID79 (GPU fell off the bus) — registered.
-// Slots 2 & 3: reserved for the next PUBLIC signatures (e.g. NCCL collective
-// timeout, PCIe/link-degraded), each of which MUST also require >=2
-// independent sources. They are intentionally left unregistered here, NOT
-// stubbed with empty no-op signatures: an empty signature that never fires is
-// dead weight, and one that fires on <2 sources would violate the gate. When
-// the next public playbook lands (its own package under playbooks/, with the
-// full ABSTAIN/FIRE/forged/negative test set), append it to this slice.
+// Slot 2: NCCL collective timeout — registered.
+// Slot 3: reserved for the next PUBLIC signature (e.g. PCIe/link-degraded),
+// which MUST also require >=2 independent sources. It is intentionally left
+// unregistered here, NOT stubbed with an empty no-op signature: an empty
+// signature that never fires is dead weight, and one that fires on <2 sources
+// would violate the gate. When the next public playbook lands (its own package
+// under playbooks/, with the full ABSTAIN/FIRE/forged/negative test set),
+// append it to this slice.
 func Default() []rca.Signature {
 	return []rca.Signature{
-		xid79.New(), // GATE_SIGNATURE_XID79_FALLEN_OFF_BUS
-		// slot 2: next public signature — append here (e.g. NCCL_TIMEOUT).
+		xid79.New(),       // GATE_SIGNATURE_XID79_FALLEN_OFF_BUS
+		nccltimeout.New(), // GATE_SIGNATURE_NCCL_TIMEOUT
 		// slot 3: next public signature — append here (e.g. LINK_DEGRADED).
 	}
 }
