@@ -48,6 +48,17 @@ func TestECCUncorrectable_Match(t *testing.T) {
 			wantIDs:   []string{"ecc.dbe.fb", "dmesg.xid.ecc.48"},
 		},
 		{
+			name:      "PROMETHEUS dbe (increase query) + dmesg ecc xid -> FIRE (Prom-primary node)",
+			window:    []rca.Evidence{ev("ecc.dbe.GPU-x", prom), ev("dmesg.xid.ecc.94", xidS)},
+			wantFired: true,
+			wantIDs:   []string{"ecc.dbe.GPU-x", "dmesg.xid.ecc.94"},
+		},
+		{
+			name:      "PROMETHEUS dbe alone -> no fire (single leg)",
+			window:    []rca.Evidence{ev("ecc.dbe.GPU-x", prom)},
+			wantFired: false,
+		},
+		{
 			name:      "dcgm dbe alone -> no fire (single leg)",
 			window:    []rca.Evidence{ev("ecc.dbe", dcgm)},
 			wantFired: false,

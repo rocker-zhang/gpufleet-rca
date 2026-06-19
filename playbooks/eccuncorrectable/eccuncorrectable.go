@@ -41,9 +41,9 @@ import (
 // (e.g. one DCGM ECC counter per memory location) while remaining publicly
 // defined, non-proprietary conventions.
 const (
-	// eccDBEPrefix marks the DCGM uncorrectable/double-bit ECC counter delta.
-	// The playbook additionally requires the source to be SIGNAL_SOURCE_DCGM, so
-	// the id alone never forges a fire.
+	// eccDBEPrefix marks the uncorrectable/double-bit ECC counter delta. The
+	// playbook additionally requires the source to be a metrics source (DCGM or
+	// PROMETHEUS, see isECCCounterSource), so the id alone never forges a fire.
 	eccDBEPrefix = "ecc.dbe"
 	// eccXidPrefix marks an INDEPENDENT kernel/dmesg ECC Xid line (public ECC
 	// XIDs 48/63/64/94/95) drawn from a non-DCGM source (DMESG_XID).
@@ -79,7 +79,7 @@ func (Sig) Match(window []rca.Evidence) (cited []rca.Evidence, fired bool) {
 	for i := range window {
 		e := &window[i]
 		switch {
-		case hasPrefix(e.SignalID, eccDBEPrefix) && e.Source == gpufleetv1.SignalSource_SIGNAL_SOURCE_DCGM:
+		case hasPrefix(e.SignalID, eccDBEPrefix) && isECCCounterSource(e.Source):
 			if dbe == nil {
 				dbe = e
 			}
@@ -100,6 +100,24 @@ func (Sig) Match(window []rca.Evidence) (cited []rca.Evidence, fired bool) {
 		return nil, false
 	}
 	return []rca.Evidence{*dbe, *corroborator}, true
+}
+
+// isECCCounterSource is the public set of metrics sources that can witness the
+// uncorrectable (double-bit) ECC COUNTER delta: the local DCGM-exporter scrape
+// (DCGM) or the existing Prometheus read of the SAME counter via an instant
+// increase() query (PROMETHEUS) on a Prometheus-primary node. Both are genuine,
+// independent metrics observations of the public DCGM_FI_DEV_ECC_DBE_VOL_TOTAL
+// counter; either one, corroborated by the INDEPENDENT kernel dmesg ECC Xid,
+// fires the fault. The corroborator leg (isECCXidSource) is deliberately disjoint
+// from this set, so the two legs are always distinct sources (real independence).
+func isECCCounterSource(s gpufleetv1.SignalSource) bool {
+	switch s {
+	case gpufleetv1.SignalSource_SIGNAL_SOURCE_DCGM,
+		gpufleetv1.SignalSource_SIGNAL_SOURCE_PROMETHEUS:
+		return true
+	default:
+		return false
+	}
 }
 
 // isECCXidSource is the public set of sources that can witness an uncorrectable
