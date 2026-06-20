@@ -79,11 +79,11 @@ func (Sig) Match(window []rca.Evidence) (cited []rca.Evidence, fired bool) {
 	for i := range window {
 		e := &window[i]
 		switch {
-		case hasPrefix(e.SignalID, eccDBEPrefix) && isECCCounterSource(e.Source):
+		case rca.HasIDPrefix(e.SignalID, eccDBEPrefix) && isECCCounterSource(e.Source):
 			if dbe == nil {
 				dbe = e
 			}
-		case hasPrefix(e.SignalID, eccXidPrefix) && isECCXidSource(e.Source):
+		case rca.HasIDPrefix(e.SignalID, eccXidPrefix) && isECCXidSource(e.Source):
 			if corroborator == nil {
 				corroborator = e
 			}
@@ -131,14 +131,4 @@ func isECCXidSource(s gpufleetv1.SignalSource) bool {
 	default:
 		return false
 	}
-}
-
-// hasPrefix reports whether id starts with prefix (exact match or "prefix.*"),
-// so distinct ids of the same kind ("ecc.dbe.fb", "ecc.dbe.l2") all match
-// without pulling in unrelated ids.
-func hasPrefix(id, prefix string) bool {
-	if id == prefix {
-		return true
-	}
-	return len(id) > len(prefix) && id[:len(prefix)] == prefix && id[len(prefix)] == '.'
 }

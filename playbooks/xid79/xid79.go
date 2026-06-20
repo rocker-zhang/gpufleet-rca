@@ -16,8 +16,8 @@
 package xid79
 
 import (
-	rca "github.com/rocker-zhang/gpufleet-rca"
 	gpufleetv1 "github.com/rocker-zhang/gpufleet-proto/gen/go/gpufleet/v1"
+	rca "github.com/rocker-zhang/gpufleet-rca"
 )
 
 // Signal-id prefixes used by the open agent's normalized timeline. They are
@@ -61,11 +61,11 @@ func (Sig) Match(window []rca.Evidence) (cited []rca.Evidence, fired bool) {
 	for i := range window {
 		e := &window[i]
 		switch {
-		case hasPrefix(e.SignalID, xidPrefix) && e.Source == gpufleetv1.SignalSource_SIGNAL_SOURCE_DMESG_XID:
+		case rca.HasIDPrefix(e.SignalID, xidPrefix) && e.Source == gpufleetv1.SignalSource_SIGNAL_SOURCE_DMESG_XID:
 			if xid == nil {
 				xid = e
 			}
-		case hasPrefix(e.SignalID, deviceLostPrefix) && isDeviceLostSource(e.Source):
+		case rca.HasIDPrefix(e.SignalID, deviceLostPrefix) && isDeviceLostSource(e.Source):
 			if corroborator == nil {
 				corroborator = e
 			}
@@ -98,14 +98,4 @@ func isDeviceLostSource(s gpufleetv1.SignalSource) bool {
 	default:
 		return false
 	}
-}
-
-// hasPrefix reports whether id starts with prefix (exact match or "prefix.*"),
-// so distinct ids of the same kind ("device.lost.dcgm", "device.lost.pcie")
-// all match without pulling in unrelated ids.
-func hasPrefix(id, prefix string) bool {
-	if id == prefix {
-		return true
-	}
-	return len(id) > len(prefix) && id[:len(prefix)] == prefix && id[len(prefix)] == '.'
 }

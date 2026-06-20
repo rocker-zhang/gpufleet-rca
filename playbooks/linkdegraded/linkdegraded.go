@@ -84,11 +84,11 @@ func (Sig) Match(window []rca.Evidence) (cited []rca.Evidence, fired bool) {
 	for i := range window {
 		e := &window[i]
 		switch {
-		case hasPrefix(e.SignalID, linkErrorPrefix) && e.Source == gpufleetv1.SignalSource_SIGNAL_SOURCE_DCGM:
+		case rca.HasIDPrefix(e.SignalID, linkErrorPrefix) && e.Source == gpufleetv1.SignalSource_SIGNAL_SOURCE_DCGM:
 			if linkErr == nil {
 				linkErr = e
 			}
-		case hasPrefix(e.SignalID, linkDegradedPrefix) && isLinkDegradedSource(e.Source):
+		case rca.HasIDPrefix(e.SignalID, linkDegradedPrefix) && isLinkDegradedSource(e.Source):
 			if corroborator == nil {
 				corroborator = e
 			}
@@ -120,14 +120,4 @@ func isLinkDegradedSource(s gpufleetv1.SignalSource) bool {
 	default:
 		return false
 	}
-}
-
-// hasPrefix reports whether id starts with prefix (exact match or "prefix.*"),
-// so distinct ids of the same kind ("link.degraded.width",
-// "link.degraded.pcie") all match without pulling in unrelated ids.
-func hasPrefix(id, prefix string) bool {
-	if id == prefix {
-		return true
-	}
-	return len(id) > len(prefix) && id[:len(prefix)] == prefix && id[len(prefix)] == '.'
 }

@@ -101,18 +101,30 @@ func (e *Engine) Evaluate(pack *gpufleetv1.EvidencePack) *gpufleetv1.Verdict {
 		contractVersion = pack.GetContractVersion()
 	}
 
+	// Grounding set: the signal IDs actually present in the window. A signature
+	// may only cite evidence that exists here — the engine drops any other leg
+	// before firing, so a buggy/future signature can never ground a verdict on a
+	// fabricated signal (evidence_grounding is enforced HERE in the engine, not
+	// only asserted in tests).
+	present := make(map[string]bool, len(window))
+	for _, w := range window {
+		present[w.SignalID] = true
+	}
+
 	for _, s := range e.sigs {
 		cited, fired := s.Match(window)
 		if !fired {
 			continue
 		}
-		// Defense in depth: independent of any single signature's own check,
-		// the engine re-enforces the >=2-INDEPENDENT-SOURCE gate here so the
-		// load-bearing trust property holds even if a future signature is
-		// buggy. Same-source duplicates can never satisfy it.
-		citedSignals, distinctSources := independentCitations(cited)
+		// Defense in depth, in two load-bearing steps that hold even if a future
+		// signature is buggy:
+		//   1. GROUND: drop any cited leg not present in the window (no fabricated
+		//      or hallucinated evidence may be cited).
+		//   2. INDEPENDENCE: re-enforce the >=2-INDEPENDENT-SOURCE gate on the
+		//      grounded survivors. Same-source duplicates can never satisfy it.
+		citedSignals, distinctSources := independentCitations(groundCited(cited, present))
 		if distinctSources < 2 {
-			continue // one-vote veto: not enough independent corroboration.
+			continue // one-vote veto: not enough independent, grounded corroboration.
 		}
 		return &gpufleetv1.Verdict{
 			ContractVersion: contractVersion,
@@ -149,12 +161,44 @@ func EvidenceFromPack(pack *gpufleetv1.EvidencePack) []Evidence {
 		if id == "" {
 			continue
 		}
+		// Skip entries whose provenance is UNSPECIFIED: an unattributable source
+		// cannot count toward INDEPENDENT corroboration, so admitting it would let
+		// {UNSPECIFIED, DCGM} masquerade as two independent sources. Same spirit as
+		// skipping an empty signal_id — uncitable provenance.
+		if te.GetSource() == gpufleetv1.SignalSource_SIGNAL_SOURCE_UNSPECIFIED {
+			continue
+		}
 		out = append(out, Evidence{
 			SignalID: id,
 			Source:   te.GetSource(),
 			Ts:       te.GetTs(),
 			Label:    te.GetLabel(),
 		})
+	}
+	return out
+}
+
+// HasIDPrefix reports whether a signal id equals prefix or has it as a
+// dot-bounded prefix (e.g. "device.lost.dcgm" matches prefix "device.lost" but
+// "device.lostx" does not). This is the single definition of the load-bearing
+// signal-id prefix match the playbooks use to group related ids; keeping it here
+// means a bug in the dot-boundary check is fixed in exactly one place.
+func HasIDPrefix(id, prefix string) bool {
+	if id == prefix {
+		return true
+	}
+	return len(id) > len(prefix) && id[:len(prefix)] == prefix && id[len(prefix)] == '.'
+}
+
+// groundCited drops any cited Evidence whose SignalID is not present in the
+// window — the engine never grounds a verdict on evidence that does not exist
+// (no fabricated/hallucinated citations). Returns a fresh slice.
+func groundCited(ev []Evidence, present map[string]bool) []Evidence {
+	out := make([]Evidence, 0, len(ev))
+	for _, e := range ev {
+		if present[e.SignalID] {
+			out = append(out, e)
+		}
 	}
 	return out
 }

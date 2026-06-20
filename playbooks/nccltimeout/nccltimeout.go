@@ -80,11 +80,11 @@ func (Sig) Match(window []rca.Evidence) (cited []rca.Evidence, fired bool) {
 	for i := range window {
 		e := &window[i]
 		switch {
-		case hasPrefix(e.SignalID, ncclTimeoutPrefix) && e.Source == gpufleetv1.SignalSource_SIGNAL_SOURCE_NCCL:
+		case rca.HasIDPrefix(e.SignalID, ncclTimeoutPrefix) && e.Source == gpufleetv1.SignalSource_SIGNAL_SOURCE_NCCL:
 			if nccl == nil {
 				nccl = e
 			}
-		case hasPrefix(e.SignalID, collectiveStallPrefix) && isCollectiveStallSource(e.Source):
+		case rca.HasIDPrefix(e.SignalID, collectiveStallPrefix) && isCollectiveStallSource(e.Source):
 			if corroborator == nil {
 				corroborator = e
 			}
@@ -119,14 +119,4 @@ func isCollectiveStallSource(s gpufleetv1.SignalSource) bool {
 	default:
 		return false
 	}
-}
-
-// hasPrefix reports whether id starts with prefix (exact match or "prefix.*"),
-// so distinct ids of the same kind ("collective.stall.scheduler",
-// "collective.stall.dcgm") all match without pulling in unrelated ids.
-func hasPrefix(id, prefix string) bool {
-	if id == prefix {
-		return true
-	}
-	return len(id) > len(prefix) && id[:len(prefix)] == prefix && id[len(prefix)] == '.'
 }
