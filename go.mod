@@ -19,4 +19,3 @@ require (
 // (proto/v0.1.0). For local workspace builds this replace points at the sibling
 // repo so the build resolves offline against the vendored REAL gen types — NOT
 // a hand-rolled mirror. Matches the agent / cli / semantics modules' convention.
-replace github.com/rocker-zhang/gpufleet-proto/gen/go => ../proto/gen/go
