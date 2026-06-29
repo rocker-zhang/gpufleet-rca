@@ -75,6 +75,15 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          # This job runs third-party actions (syft, gitleaks) after checkout;
+          # don't leave the GitHub token in the local git config for them.
+          persist-credentials: false
+          # gitleaks (below) scans the PR commit range `<sha>^..<sha>`, which
+          # needs the parent commit; the default shallow clone omits it and the
+          # scan fails with "unknown revision". Match secret-scan.yml's full
+          # checkout so the range resolves.
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26"
