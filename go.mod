@@ -15,7 +15,7 @@ require (
 	google.golang.org/grpc v1.81.1 // indirect
 )
 
-// Poly-repo: in CI this dependency is consumed at the pinned proto tag
-// (proto/v0.1.0). For local workspace builds this replace points at the sibling
-// repo so the build resolves offline against the vendored REAL gen types — NOT
-// a hand-rolled mirror. Matches the agent / cli / semantics modules' convention.
+// Poly-repo: gpufleet-proto/gen/go is consumed as a published module (no local
+// replace). The pinned tag gen/go/v0.3.0 is the release path; the ci/verify-by-tag.sh
+// script confirms the tag resolves from the Go proxy and guards against a stray
+// replace directive creeping in. Matches the agent / cli / semantics convention.

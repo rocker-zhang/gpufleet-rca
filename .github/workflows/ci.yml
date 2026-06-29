@@ -59,16 +59,36 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: go build -o /dev/null ./...
 
-  # TODO(TASK-0054): add a `require-by-tag` job (like agent/cli/semantics have)
-  # that resolves the proto gen module strictly by its pinned tag with no local
-  # `replace`, exercising rca's RELEASE consumption path.
+  # `require-by-tag` proves the RELEASE consumption path: the tag, the `require`
+  # version string, and the go.sum checksum for the gen module are never exercised
+  # by a normal build (rca has no local replace today, but this job guards against
+  # one creeping in and confirms the pinned tag resolves from the proxy).
+  # This job drops every gpufleet-* replace and resolves the gen module strictly
+  # by its pinned tag.
   #
-  # OUT OF SCOPE TODAY — this is BLOCKED on publishing the open repos, which is
-  # gate-⑥ / G8 work tracked under TASK-0036 (proto must publish the Go submodule
-  # tag `gen/go/v0.1.0` and the private sibling repos need GOPRIVATE + token auth
-  # before a by-tag resolve can actually run, even in SOFT mode). Once TASK-0036
-  # lands, copy agent/.github/workflows/ci.yml's `require-by-tag` job + add
-  # rca/ci/verify-by-tag.sh, gated SOFT by `vars.PROTO_GEN_TAG_PUBLISHED`.
+  # PREREQUISITE (outside this repo — see TASK-0031): proto must publish the Go
+  # submodule tag `gen/go/v0.3.0` (Go derives the tag from the module subdir
+  # path; a module at .../gen/go is NOT addressable by `proto/v0.3.0`), and the
+  # private repo must be auth'd via GOPRIVATE + a github.com token. Until then
+  # the job runs in SOFT mode (prints the exact unresolved revision, exits 0).
+  # Flip repo variable PROTO_GEN_TAG_PUBLISHED=true to make it blocking.
+  require-by-tag:
+    needs: [test]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The job runs a repo script after checkout; don't leave the GitHub
+          # token in the local git config for it.
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - name: resolve gen module by pinned tag (no replace)
+        env:
+          VERIFY_BY_TAG_SOFT: ${{ vars.PROTO_GEN_TAG_PUBLISHED == 'true' && '0' || '1' }}
+        run: bash ci/verify-by-tag.sh
 
   supply-chain:
     needs: [test]
