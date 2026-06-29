@@ -3,7 +3,7 @@ module github.com/rocker-zhang/gpufleet-rca
 go 1.26.0
 
 require (
-	github.com/rocker-zhang/gpufleet-proto/gen/go v0.1.0
+	github.com/rocker-zhang/gpufleet-proto/gen/go v0.3.0
 	google.golang.org/protobuf v1.36.11
 )
 
