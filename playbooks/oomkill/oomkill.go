@@ -65,33 +65,28 @@ func (Sig) GateSignature() gpufleetv1.GateSignature {
 
 // Match fires when the window contains (a) a kernel oom-killer line whose source
 // is SIGNAL_SOURCE_DMESG_XID AND (b) an INDEPENDENT DCGM framebuffer/memory-
-// pressure observation from SIGNAL_SOURCE_DCGM. The returned citations are
-// exactly the two matched evidences (real inputs only). It returns (nil, false)
-// — ABSTAIN — otherwise: a missing leg, or a signal whose source does not match
-// its leg.
+// pressure observation from SIGNAL_SOURCE_DCGM that is co-located on the same
+// device. It collects ALL matching candidates for each leg and calls
+// rca.FirstSameDevicePair to find the first co-located pair, so a mixed-device
+// window with an early cross-device pair does not suppress a valid same-device
+// pair later in the window. It returns (nil, false) — ABSTAIN — otherwise.
 func (Sig) Match(window []rca.Evidence) (cited []rca.Evidence, fired bool) {
-	var killed *rca.Evidence
-	var pressure *rca.Evidence
+	var killeds []*rca.Evidence
+	var pressures []*rca.Evidence
 
 	for i := range window {
 		e := &window[i]
 		switch {
 		case rca.HasIDPrefix(e.SignalID, oomKilledPrefix) && e.Source == gpufleetv1.SignalSource_SIGNAL_SOURCE_DMESG_XID:
-			if killed == nil {
-				killed = e
-			}
+			killeds = append(killeds, e)
 		case rca.HasIDPrefix(e.SignalID, memPressurePrefix) && e.Source == gpufleetv1.SignalSource_SIGNAL_SOURCE_DCGM:
-			if pressure == nil {
-				pressure = e
-			}
+			pressures = append(pressures, e)
 		}
 	}
 
-	if killed == nil || pressure == nil {
+	a, b, ok := rca.FirstSameDevicePair(killeds, pressures)
+	if !ok {
 		return nil, false
 	}
-	// Independence holds structurally: the two legs are pinned to distinct
-	// sources (DMESG_XID and DCGM), so a fire always cites two independent
-	// sources. The engine re-checks the >=2-independent-source rule centrally.
-	return []rca.Evidence{*killed, *pressure}, true
+	return []rca.Evidence{*a, *b}, true
 }

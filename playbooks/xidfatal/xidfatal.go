@@ -68,32 +68,28 @@ func (Sig) GateSignature() gpufleetv1.GateSignature {
 
 // Match fires when the window contains (a) a driver fatal-Xid log whose source
 // is SIGNAL_SOURCE_DMESG_XID AND (b) an INDEPENDENT DCGM device-health failure
-// from SIGNAL_SOURCE_DCGM. The returned citations are exactly the two matched
-// evidences (real inputs only). It returns (nil, false) — ABSTAIN — otherwise:
-// a missing leg, or a signal whose source does not match its leg.
+// from SIGNAL_SOURCE_DCGM that is co-located on the same device. It collects
+// ALL matching candidates for each leg and calls rca.FirstSameDevicePair to
+// find the first co-located pair, so a mixed-device window with an early
+// cross-device pair does not suppress a valid same-device pair later in the
+// window. It returns (nil, false) — ABSTAIN — otherwise.
 func (Sig) Match(window []rca.Evidence) (cited []rca.Evidence, fired bool) {
-	var xid *rca.Evidence
-	var health *rca.Evidence
+	var xids []*rca.Evidence
+	var healths []*rca.Evidence
 
 	for i := range window {
 		e := &window[i]
 		switch {
 		case rca.HasIDPrefix(e.SignalID, xidFatalPrefix) && e.Source == gpufleetv1.SignalSource_SIGNAL_SOURCE_DMESG_XID:
-			if xid == nil {
-				xid = e
-			}
+			xids = append(xids, e)
 		case rca.HasIDPrefix(e.SignalID, deviceHealthFailedPrefix) && e.Source == gpufleetv1.SignalSource_SIGNAL_SOURCE_DCGM:
-			if health == nil {
-				health = e
-			}
+			healths = append(healths, e)
 		}
 	}
 
-	if xid == nil || health == nil {
+	a, b, ok := rca.FirstSameDevicePair(xids, healths)
+	if !ok {
 		return nil, false
 	}
-	// Independence holds structurally: the two legs are pinned to distinct
-	// sources (DMESG_XID and DCGM), so a fire always cites two independent
-	// sources. The engine re-checks the >=2-independent-source rule centrally.
-	return []rca.Evidence{*xid, *health}, true
+	return []rca.Evidence{*a, *b}, true
 }

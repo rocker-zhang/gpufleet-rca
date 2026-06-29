@@ -12,6 +12,10 @@ func ev(id string, src gpufleetv1.SignalSource) rca.Evidence {
 	return rca.Evidence{SignalID: id, Source: src, Label: id}
 }
 
+func evd(id string, src gpufleetv1.SignalSource, device string) rca.Evidence {
+	return rca.Evidence{SignalID: id, Source: src, Label: id, Device: device}
+}
+
 func ids(cited []rca.Evidence) []string {
 	out := make([]string, 0, len(cited))
 	for _, c := range cited {
@@ -85,6 +89,38 @@ func TestXIDFatal_Match(t *testing.T) {
 			name:      "negative: empty window -> no fire",
 			window:    nil,
 			wantFired: false,
+		},
+		// same-device guard cases
+		{
+			name:      "same device -> FIRE",
+			window:    []rca.Evidence{evd("dmesg.xid.fatal.119", xidS, "GPU-7"), evd("device.health.failed", dcgm, "GPU-7")},
+			wantFired: true,
+			wantIDs:   []string{"dmesg.xid.fatal.119", "device.health.failed"},
+		},
+		{
+			name:      "different device -> no fire",
+			window:    []rca.Evidence{evd("dmesg.xid.fatal.119", xidS, "GPU-0"), evd("device.health.failed", dcgm, "GPU-9")},
+			wantFired: false,
+		},
+		{
+			name:      "one leg missing device -> FIRE (attribution unavailable)",
+			window:    []rca.Evidence{evd("dmesg.xid.fatal.119", xidS, "GPU-0"), evd("device.health.failed", dcgm, "")},
+			wantFired: true,
+			wantIDs:   []string{"dmesg.xid.fatal.119", "device.health.failed"},
+		},
+		{
+			// Mixed-device window: the first corroborator candidate is on GPU-9
+			// (cross-device with legA on GPU-0); the second is on GPU-0 (same
+			// device). Must FIRE citing the same-device pair, not ABSTAIN on the
+			// first cross-device pair.
+			name: "mixed-device window: early cross-device, later same-device -> FIRE (same-device pair)",
+			window: []rca.Evidence{
+				evd("dmesg.xid.fatal.119", xidS, "GPU-0"),
+				evd("device.health.failed.cross", dcgm, "GPU-9"),
+				evd("device.health.failed.same", dcgm, "GPU-0"),
+			},
+			wantFired: true,
+			wantIDs:   []string{"dmesg.xid.fatal.119", "device.health.failed.same"},
 		},
 	}
 

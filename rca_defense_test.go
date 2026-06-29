@@ -29,7 +29,7 @@ const dcgm = gpufleetv1.SignalSource_SIGNAL_SOURCE_DCGM
 func TestEngine_GroundsFabricatedCitation(t *testing.T) {
 	p := pack(entry("dmesg.xid79.GPU-0", dmesg)) // only ONE real signal in the window
 	eng := rca.NewEngine(rogueSig{cited: []rca.Evidence{
-		{SignalID: "dmesg.xid79.GPU-0", Source: dmesg}, // grounded (present)
+		{SignalID: "dmesg.xid79.GPU-0", Source: dmesg},   // grounded (present)
 		{SignalID: "fabricated.leg.GPU-0", Source: dcgm}, // NOT in window → dropped
 	}})
 	v := eng.Evaluate(p)

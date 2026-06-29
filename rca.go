@@ -50,6 +50,10 @@ type Evidence struct {
 	// Source is the provenance/independence class (kernel dmesg-xid vs DCGM vs
 	// NCCL ...). Independence is derived from THIS, never a declared field.
 	Source gpufleetv1.SignalSource
+	// Device is the device_uuid the signal is attributed to ("" when the producer
+	// did not attribute one). Independence is still judged on Source (unchanged);
+	// Device only co-locates corroborating legs via SameDevice.
+	Device string
 	// Ts is the observation timestamp (denormalized onto the cited signal).
 	Ts *timestamppb.Timestamp
 	// Label is a short, non-adjudicating human note carried into the citation.
@@ -171,6 +175,7 @@ func EvidenceFromPack(pack *gpufleetv1.EvidencePack) []Evidence {
 		out = append(out, Evidence{
 			SignalID: id,
 			Source:   te.GetSource(),
+			Device:   te.GetDeviceUuid(),
 			Ts:       te.GetTs(),
 			Label:    te.GetLabel(),
 		})
@@ -188,6 +193,34 @@ func HasIDPrefix(id, prefix string) bool {
 		return true
 	}
 	return len(id) > len(prefix) && id[:len(prefix)] == prefix && id[len(prefix)] == '.'
+}
+
+// SameDevice reports whether two evidences are consistent with the same device.
+// It returns false ONLY when both carry a non-empty device id and the ids
+// differ; if either device id is absent, device attribution is unavailable and
+// the legs are treated as co-located (historical behavior), so telemetry that
+// predates device tagging still corroborates.
+func SameDevice(a, b Evidence) bool {
+	if a.Device == "" || b.Device == "" {
+		return true
+	}
+	return a.Device == b.Device
+}
+
+// FirstSameDevicePair returns the first (a in as, b in bs) pair that satisfies
+// SameDevice, scanning as in order then bs in order (deterministic). The two
+// candidate slices come from the two distinct legs, so any returned pair is
+// already from two independent sources. Returns (nil,nil,false) if no pair is
+// co-located (every cross pair has two differing non-empty device ids).
+func FirstSameDevicePair(as, bs []*Evidence) (a, b *Evidence, ok bool) {
+	for _, a := range as {
+		for _, b := range bs {
+			if SameDevice(*a, *b) {
+				return a, b, true
+			}
+		}
+	}
+	return nil, nil, false
 }
 
 // groundCited drops any cited Evidence whose SignalID is not present in the

@@ -66,40 +66,32 @@ func (Sig) GateSignature() gpufleetv1.GateSignature {
 	return gpufleetv1.GateSignature_GATE_SIGNATURE_ECC_UNCORRECTABLE
 }
 
-// Match fires when the window contains (a) a DCGM uncorrectable/double-bit ECC
-// counter whose source is SIGNAL_SOURCE_DCGM AND (b) a kernel/dmesg ECC Xid
-// corroboration from a DIFFERENT source (DMESG_XID). The returned citations are
-// exactly the matched evidence (real inputs only). It returns (nil, false) —
-// ABSTAIN — otherwise, including when both legs share the same source (forged
-// independence, e.g. DCGM+DCGM).
+// Match fires when the window contains (a) an ECC counter (DCGM or PROMETHEUS)
+// AND (b) a kernel/dmesg ECC Xid corroboration from DMESG_XID that is
+// co-located on the same device. It collects ALL matching candidates for each
+// leg and calls rca.FirstSameDevicePair to find the first co-located pair, so
+// a mixed-device window with an early cross-device pair does not suppress a
+// valid same-device pair later in the window.
+// It returns (nil, false) — ABSTAIN — otherwise.
 func (Sig) Match(window []rca.Evidence) (cited []rca.Evidence, fired bool) {
-	var dbe *rca.Evidence
-	var corroborator *rca.Evidence
+	var dbes []*rca.Evidence
+	var corroborators []*rca.Evidence
 
 	for i := range window {
 		e := &window[i]
 		switch {
 		case rca.HasIDPrefix(e.SignalID, eccDBEPrefix) && isECCCounterSource(e.Source):
-			if dbe == nil {
-				dbe = e
-			}
+			dbes = append(dbes, e)
 		case rca.HasIDPrefix(e.SignalID, eccXidPrefix) && isECCXidSource(e.Source):
-			if corroborator == nil {
-				corroborator = e
-			}
+			corroborators = append(corroborators, e)
 		}
 	}
 
-	if dbe == nil || corroborator == nil {
+	a, b, ok := rca.FirstSameDevicePair(dbes, corroborators)
+	if !ok {
 		return nil, false
 	}
-	// Independence is on SOURCE: the corroborator must not share the DCGM leg's
-	// source. (By construction the corroborator is DMESG_XID, but this makes the
-	// load-bearing rule explicit and local to the signature.)
-	if corroborator.Source == dbe.Source {
-		return nil, false
-	}
-	return []rca.Evidence{*dbe, *corroborator}, true
+	return []rca.Evidence{*a, *b}, true
 }
 
 // isECCCounterSource is the public set of metrics sources that can witness the

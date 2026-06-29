@@ -201,3 +201,119 @@ func TestGate_NilPackAbstains(t *testing.T) {
 		t.Fatalf("nil pack: got %v, want ABSTAIN", v.GetFaultClass())
 	}
 }
+
+func TestSameDevice(t *testing.T) {
+	ev := func(device string) rca.Evidence { return rca.Evidence{Device: device} }
+	cases := []struct {
+		name string
+		a, b rca.Evidence
+		want bool
+	}{
+		{"both empty -> true", ev(""), ev(""), true},
+		{"a empty -> true (attribution unavailable)", ev(""), ev("GPU-0"), true},
+		{"b empty -> true (attribution unavailable)", ev("GPU-0"), ev(""), true},
+		{"same id -> true", ev("GPU-7"), ev("GPU-7"), true},
+		{"different ids -> false", ev("GPU-0"), ev("GPU-9"), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := rca.SameDevice(tc.a, tc.b); got != tc.want {
+				t.Errorf("SameDevice(%q, %q) = %v, want %v", tc.a.Device, tc.b.Device, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFirstSameDevicePair(t *testing.T) {
+	ep := func(device string) *rca.Evidence {
+		e := rca.Evidence{Device: device}
+		return &e
+	}
+	gpu0a := ep("GPU-0")
+	gpu0b := ep("GPU-0") // second GPU-0, distinct pointer
+	gpu9 := ep("GPU-9")
+	empty := ep("")
+
+	cases := []struct {
+		name   string
+		as, bs []*rca.Evidence
+		wantA  *rca.Evidence
+		wantB  *rca.Evidence
+		wantOK bool
+	}{
+		{
+			name:   "both nil -> no pair",
+			wantOK: false,
+		},
+		{
+			name:   "as nil -> no pair",
+			bs:     []*rca.Evidence{gpu9},
+			wantOK: false,
+		},
+		{
+			name:   "bs nil -> no pair",
+			as:     []*rca.Evidence{gpu0a},
+			wantOK: false,
+		},
+		{
+			name:   "only cross-device pair -> no pair",
+			as:     []*rca.Evidence{gpu0a},
+			bs:     []*rca.Evidence{gpu9},
+			wantOK: false,
+		},
+		{
+			name:   "same device -> first pair",
+			as:     []*rca.Evidence{gpu0a},
+			bs:     []*rca.Evidence{gpu0b},
+			wantA:  gpu0a,
+			wantB:  gpu0b,
+			wantOK: true,
+		},
+		{
+			name:   "one leg device-less -> first pair (attribution unavailable)",
+			as:     []*rca.Evidence{empty},
+			bs:     []*rca.Evidence{gpu0a},
+			wantA:  empty,
+			wantB:  gpu0a,
+			wantOK: true,
+		},
+		{
+			// Key mixed-device scenario: early cross-device pair, later same-device pair.
+			// FirstSameDevicePair must skip the cross-device (gpu0a, gpu9) and
+			// return the first same-device pair (gpu0a, gpu0b).
+			name:   "mixed: early cross-device then same-device -> first same-device pair",
+			as:     []*rca.Evidence{gpu0a},
+			bs:     []*rca.Evidence{gpu9, gpu0b},
+			wantA:  gpu0a,
+			wantB:  gpu0b,
+			wantOK: true,
+		},
+		{
+			// Deterministic: all device-less => first pair (firstA, firstB).
+			name:   "device-less window -> returns (firstA, firstB)",
+			as:     []*rca.Evidence{empty, gpu0a},
+			bs:     []*rca.Evidence{empty, gpu9},
+			wantA:  empty,
+			wantB:  empty,
+			wantOK: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a, b, ok := rca.FirstSameDevicePair(tc.as, tc.bs)
+			if ok != tc.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, tc.wantOK)
+			}
+			if !ok {
+				return
+			}
+			if a != tc.wantA {
+				t.Errorf("a.Device = %q, want %q", a.Device, tc.wantA.Device)
+			}
+			if b != tc.wantB {
+				t.Errorf("b.Device = %q, want %q", b.Device, tc.wantB.Device)
+			}
+		})
+	}
+}
