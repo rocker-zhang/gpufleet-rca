@@ -74,37 +74,30 @@ func (Sig) GateSignature() gpufleetv1.GateSignature {
 // Match fires when the window contains (a) a DCGM link error counter whose
 // source is SIGNAL_SOURCE_DCGM AND (b) a link width/speed downgrade (or PCIe
 // link-down) corroboration from a DIFFERENT, non-DCGM source (PROMETHEUS or
-// PROC). The returned citations are exactly the matched evidence (real inputs
-// only). It returns (nil, false) — ABSTAIN — otherwise, including when both
-// legs share the same source (forged independence, e.g. DCGM+DCGM).
+// PROC) that is co-located on the same device. It collects ALL matching
+// candidates for each leg and calls rca.FirstSameDevicePair to find the first
+// co-located pair, so a mixed-device window with an early cross-device pair
+// does not suppress a valid same-device pair later in the window.
+// It returns (nil, false) — ABSTAIN — otherwise.
 func (Sig) Match(window []rca.Evidence) (cited []rca.Evidence, fired bool) {
-	var linkErr *rca.Evidence
-	var corroborator *rca.Evidence
+	var linkErrs []*rca.Evidence
+	var corroborators []*rca.Evidence
 
 	for i := range window {
 		e := &window[i]
 		switch {
 		case rca.HasIDPrefix(e.SignalID, linkErrorPrefix) && e.Source == gpufleetv1.SignalSource_SIGNAL_SOURCE_DCGM:
-			if linkErr == nil {
-				linkErr = e
-			}
+			linkErrs = append(linkErrs, e)
 		case rca.HasIDPrefix(e.SignalID, linkDegradedPrefix) && isLinkDegradedSource(e.Source):
-			if corroborator == nil {
-				corroborator = e
-			}
+			corroborators = append(corroborators, e)
 		}
 	}
 
-	if linkErr == nil || corroborator == nil {
+	a, b, ok := rca.FirstSameDevicePair(linkErrs, corroborators)
+	if !ok {
 		return nil, false
 	}
-	// Independence is on SOURCE: the corroborator must not share the DCGM leg's
-	// source. (By construction the corroborator is non-DCGM, but this makes the
-	// load-bearing rule explicit and local to the signature.)
-	if corroborator.Source == linkErr.Source {
-		return nil, false
-	}
-	return []rca.Evidence{*linkErr, *corroborator}, true
+	return []rca.Evidence{*a, *b}, true
 }
 
 // isLinkDegradedSource is the public set of sources that can witness a degraded

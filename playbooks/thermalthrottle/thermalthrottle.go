@@ -63,32 +63,28 @@ func (Sig) GateSignature() gpufleetv1.GateSignature {
 
 // Match fires when the window contains (a) a DCGM thermal-violation whose source
 // is SIGNAL_SOURCE_DCGM AND (b) a kernel/dmesg thermal-slowdown corroboration
-// from SIGNAL_SOURCE_DMESG_XID. The returned citations are exactly the two
-// matched evidences (real inputs only). It returns (nil, false) — ABSTAIN —
-// otherwise: a missing leg, or a signal whose source does not match its leg.
+// from SIGNAL_SOURCE_DMESG_XID that is co-located on the same device. It
+// collects ALL matching candidates for each leg and calls rca.FirstSameDevicePair
+// to find the first co-located pair, so a mixed-device window with an early
+// cross-device pair does not suppress a valid same-device pair later in the
+// window. It returns (nil, false) — ABSTAIN — otherwise.
 func (Sig) Match(window []rca.Evidence) (cited []rca.Evidence, fired bool) {
-	var violation *rca.Evidence
-	var slowdown *rca.Evidence
+	var violations []*rca.Evidence
+	var slowdowns []*rca.Evidence
 
 	for i := range window {
 		e := &window[i]
 		switch {
 		case rca.HasIDPrefix(e.SignalID, thermalViolationPrefix) && e.Source == gpufleetv1.SignalSource_SIGNAL_SOURCE_DCGM:
-			if violation == nil {
-				violation = e
-			}
+			violations = append(violations, e)
 		case rca.HasIDPrefix(e.SignalID, thermalSlowdownPrefix) && e.Source == gpufleetv1.SignalSource_SIGNAL_SOURCE_DMESG_XID:
-			if slowdown == nil {
-				slowdown = e
-			}
+			slowdowns = append(slowdowns, e)
 		}
 	}
 
-	if violation == nil || slowdown == nil {
+	a, b, ok := rca.FirstSameDevicePair(violations, slowdowns)
+	if !ok {
 		return nil, false
 	}
-	// Independence holds structurally: the two legs are pinned to distinct
-	// sources (DCGM and DMESG_XID), so a fire always cites two independent
-	// sources. The engine re-checks the >=2-independent-source rule centrally.
-	return []rca.Evidence{*violation, *slowdown}, true
+	return []rca.Evidence{*a, *b}, true
 }
